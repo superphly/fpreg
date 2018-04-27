@@ -4,62 +4,52 @@ var uglify = require('gulp-uglify');
 var concat = require('gulp-concat');
 var sass = require('gulp-sass');
 var plumber = require('gulp-plumber');
+var rm = require('gulp-rimraf');
+var runSequence = require('run-sequence');
 var cp = require('child_process');
 var imagemin = require('gulp-imagemin');
 var browserSync = require('browser-sync');
+var bower = require('gulp-bower');
+var mainBowerFiles = require('main-bower-files');
 
 var jekyllCommand = (/^win/.test(process.platform)) ? 'jekyll.bat' : 'jekyll';
 
-/*
- * Build the Jekyll Site
- * runs a child process in node that runs the jekyll commands
- */
-gulp.task('jekyll-build', function (done) {
-	return cp.spawn(jekyllCommand, ['build'], {stdio: 'inherit'})
-		.on('close', done);
+gulp.task('clean', function() {
+    return gulp.src(['assets/*', '_site/*']).pipe(rm());
 });
 
-/*
- * Rebuild Jekyll & reload browserSync
- */
-gulp.task('jekyll-rebuild', ['jekyll-build'], function () {
-	browserSync.reload();
+/* Compile and minify js */
+gulp.task('js', function(){
+	return gulp.src('src/js/*.js')
+		.pipe(plumber())
+		.pipe(uglify())
+		.pipe(concat('main.js'))
+		.pipe(gulp.dest('assets/js/'))
 });
 
-/*
- * Build the jekyll site and launch browser-sync
- */
-gulp.task('browser-sync', ['jekyll-build'], function() {
-	browserSync({
-		server: {
-			baseDir: '_site'
-		}
-	});
+/* Grab web3 from bower */
+gulp.task('web3', function() {
+	return gulp.src(mainBowerFiles(), {base:'bower_components'})
+		.pipe(gulp.dest('assets/js/'))
 });
 
-/*
-* Compile and minify sass
-*/
+/* Compile and minify sass */
 gulp.task('sass', function() {
-  gulp.src('src/styles/**/*.scss')
-    .pipe(plumber())
-    .pipe(sass())
-    .pipe(csso())
-    .pipe(gulp.dest('assets/css/'));
+	return gulp.src('src/styles/**/*.scss')
+	    .pipe(plumber())
+	    .pipe(sass())
+	    .pipe(csso())
+	    .pipe(gulp.dest('assets/css/'));
 });
 
-/*
-* Compile fonts
-*/
+/* Compile fonts */
 gulp.task('fonts', function() {
-	gulp.src('src/fonts/**/*.{ttf,woff,woff2}')
-	.pipe(plumber())
-	.pipe(gulp.dest('assets/fonts/'));
+	return gulp.src('src/fonts/**/*.{ttf,woff,woff2}')
+		.pipe(plumber())
+		.pipe(gulp.dest('assets/fonts/'));
 })
 
-/*
- * Minify images
- */
+/* Minify images */
 gulp.task('imagemin', function() {
 	return gulp.src('src/img/**/*.{jpg,png,gif}')
 		.pipe(plumber())
@@ -67,23 +57,38 @@ gulp.task('imagemin', function() {
 		.pipe(gulp.dest('assets/img/'));
 });
 
-/**
- * Compile and minify js
- */
-gulp.task('js', function(){
-	return gulp.src('src/js/**/*.js')
-		.pipe(plumber())
-		.pipe(concat('main.js'))
-		.pipe(uglify())
-		.pipe(gulp.dest('assets/js/'))
+/* Build the Jekyll Site */
+gulp.task('jekyll-build', function (done) {
+	return cp.spawn(jekyllCommand, ['build'], {stdio: 'inherit'}).on('close', done);
 });
 
+/* Build the jekyll site and launch browser-sync */
+gulp.task('browser-sync', ['jekyll-build'], function() {
+	browserSync({server: {baseDir: '_site'}});
+});
+
+
+/* Watch for changes */
 gulp.task('watch', function() {
   gulp.watch('src/styles/**/*.scss', ['sass', 'jekyll-rebuild']);
-  gulp.watch('src/js/**/*.js', ['js']);
-  gulp.watch('src/fonts/**/*.{tff,woff,woff2}', ['fonts']);
-  gulp.watch('src/img/**/*.{jpg,png,gif}', ['imagemin']);
+  gulp.watch('src/js/**/*.js', ['js', 'jekyll-rebuild']);
+  gulp.watch('src/fonts/**/*.{tff,woff,woff2}', ['fonts', 'jekyll-rebuild']);
+  gulp.watch('src/img/**/*.{jpg,png,gif}', ['imagemin', 'jekyll-rebuild']);
   gulp.watch(['*html', '_includes/*html', '_layouts/*.html'], ['jekyll-rebuild']);
 });
 
-gulp.task('default', ['js', 'sass', 'fonts', 'browser-sync', 'watch']);
+/* Rebuild Jekyll & reload browserSync */
+gulp.task('jekyll-rebuild', ['jekyll-build'], function (done) {
+	cp.spawn(jekyllCommand, ['build'], {stdio: 'inherit'}).on('close', done);
+	browserSync.reload();
+	done();
+});
+
+gulp.task('default', function() {
+	return runSequence(
+		'clean',
+		['js', 'sass', 'fonts', 'imagemin'],
+		'browser-sync',
+		'watch'
+	);
+});
